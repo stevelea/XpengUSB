@@ -581,6 +581,33 @@ Two settings are easy to confuse, so they are labelled apart in the settings pag
 | `XPENG_DRIVE_RETENTION_DAYS` | how long clips stay **on the car's drive** (default 14) |
 | `XPENG_RETENTION_DAYS` | how long the **NAS archive** is kept (default 0 = forever; this is the viewer's library) |
 
+### 7.14 The car's own hotspot as a fallback network
+
+The car runs an access point, which is the one network that is available exactly when the car
+is away from home - the case the emergency lane exists for. It is configured as a **fallback**:
+
+| Connection | SSID | Autoconnect priority |
+|---|---|---|
+| home | (home SSID) | **100** |
+| car hotspot | `Xpeng006` | **-10** |
+
+NetworkManager therefore joins home whenever it is in range and only falls back to the car's
+AP otherwise. Both are 600-mode keyfiles; the password is not in this repository.
+
+`tools/xpeng-prepare-boot.sh` accepts it for a fresh card:
+
+```bash
+XPENG_WIFI_SSID="my-home-wifi" XPENG_WIFI_PASSWORD="…" \
+XPENG_WIFI_ALT_SSID="car-hotspot" XPENG_WIFI_ALT_PASSWORD="…" \
+  bash tools/xpeng-prepare-boot.sh /Volumes/bootfs
+```
+
+**What it does and does not buy you.** `xpeng-network-state.sh` reports this as `other`, not
+`home`, so only the emergency lane runs - which is the intent. But the NAS is a LAN address
+and is not reachable from the car's hotspot; a car-side upload therefore needs either an
+internet-reachable backend (rclone/Drive) or a route to the NAS over Tailscale. Joining the
+hotspot alone does not make emergency clips leave the car - it makes the lane *eligible*.
+
 ---
 
 ## 8. Hardware

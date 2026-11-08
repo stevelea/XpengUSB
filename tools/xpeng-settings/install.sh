@@ -48,8 +48,14 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-echo "== retiring nginx on the Pi (the archive viewer moved to the Frigate host)"
-systemctl disable --now nginx 2>/dev/null || true
+echo "== retiring nginx on the Pi (the archive viewer moved off this board)"
+# NOT `systemctl stop`: nginx workers can be blocked in a CIFS read on /mnt/archive,
+# and a graceful stop then waits for them indefinitely - it has wedged this board
+# before. Disable the unit, then kill outright.
+systemctl disable nginx 2>/dev/null || true
+pkill -9 -x nginx 2>/dev/null || true
+sleep 1
+systemctl reset-failed nginx 2>/dev/null || true
 rm -f /etc/nginx/sites-enabled/xpeng
 if command -v apt-get > /dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get purge -y -qq nginx-light nginx-common >/dev/null 2>&1 || true

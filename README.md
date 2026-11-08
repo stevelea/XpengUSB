@@ -22,7 +22,8 @@ Verified on a real car on **2026-11-08** (Pi Zero W rev 1.1, 256 GB card):
 | Clips archive to the NAS over SMB, size-verified | ✅ |
 | Verified from a **read-only loop mount while the car had the drive open** — no unmount, no complaint | ✅ |
 | Clips browsable in the dashcam viewer, noodgeval/normal labelled correctly | ✅ |
-| Live view in Frigate (3 cameras) and a web UI | ✅ optional |
+| Live view in Frigate (3 cameras) — optional | ✅ |
+| Settings page on the Pi (port 8081) | ✅ installed and used |
 | Delete-from-drive / retention logic | ✅ unit-tested (45 assertions) |
 | Unattended scheduling | ❌ **not built yet** — archiving is run on demand |
 | Drive image larger than 64 GiB | ❌ untested on a car |
@@ -112,6 +113,15 @@ All optional; the defaults are inert. Full list in
 | `XPENG_VIEWS` | `front front_and_360` | archive all views, or `front` only (half the volume) |
 | `XPENG_RETENTION_DAYS` | `0` | keep the **NAS archive** for N days; `0` = forever |
 | `XPENG_EXTRA_DIRS` | *(empty)* | extra clip folders treated as emergency (e.g. a future XGuard folder) |
+
+Wi-Fi takes a list of home networks, plus an optional **fallback** with its own password
+(useful for a car's own hotspot, joined only when home is out of range):
+
+```bash
+XPENG_WIFI_SSID="my-home-wifi" XPENG_WIFI_PASSWORD="…" \
+XPENG_WIFI_ALT_SSID="car-hotspot" XPENG_WIFI_ALT_PASSWORD="…" \
+  bash tools/xpeng-prepare-boot.sh /Volumes/bootfs
+```
 
 Deletion is gated twice: the clip must be in the archive index (written only after a
 size-verified copy), **and** older than the window. A clip that never copied cannot be

@@ -38,6 +38,11 @@
 #
 # Wi-Fi (optional): XPENG_WIFI_SSID may be a space-separated list, e.g.
 #   XPENG_WIFI_SSID="my-home-wifi my-other-wifi"
+#
+# Fallback network with a DIFFERENT password (e.g. a car's own hotspot):
+#   XPENG_WIFI_ALT_SSID="car-hotspot" XPENG_WIFI_ALT_PASSWORD="…"
+# It is written as a separate keyfile with a NEGATIVE priority, so it is only ever
+# joined when the home networks are out of range.
 # One NetworkManager keyfile is written per SSID with descending autoconnect
 # priority, so whichever the radio can actually see wins. A dual-band mesh SSID
 # can be unusable for a 2.4 GHz-only radio (band steering, or the 2.4 GHz BSS not
@@ -155,6 +160,8 @@ fi
 # --- wifi (optional): first-boot script --------------------------------
 WIFI_SSID="${XPENG_WIFI_SSID:-}"   # space-separated list allowed
 WIFI_PASSWORD="${XPENG_WIFI_PASSWORD:-}"
+WIFI_ALT_SSID="${XPENG_WIFI_ALT_SSID:-}"
+WIFI_ALT_PASSWORD="${XPENG_WIFI_ALT_PASSWORD:-}"
 HOSTNAME_WANTED="${XPENG_HOSTNAME:-piXpeng}"
 FIRSTRUN="$BOOT/firstrun.sh"
 
@@ -234,6 +241,38 @@ NM_EOF
   echo "--- wrote $CONNDIR/$safe.nmconnection (priority $priority) ---" >> "$LOG"
   priority=$(( priority - 10 ))
 done
+
+# --- the fallback network (different password, joined only when needed) ------
+if [ -n "@ALTSSID@" ]; then
+  alt_safe=$(printf '%s' "@ALTSSID@" | tr -c 'A-Za-z0-9._-' '_')
+  cat > "$CONNDIR/$alt_safe.nmconnection" <<NM_ALT
+[connection]
+id=@ALTSSID@
+type=wifi
+autoconnect=true
+autoconnect-priority=-10
+
+[wifi]
+ssid=@ALTSSID@
+mode=infrastructure
+
+[match]
+interface-name=wlan0
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=@ALTPASS@
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+NM_ALT
+  chmod 600 "$CONNDIR/$alt_safe.nmconnection"
+  chown root:root "$CONNDIR/$alt_safe.nmconnection" 2>/dev/null
+  echo "--- wrote fallback $CONNDIR/$alt_safe.nmconnection (priority -10) ---" >> "$LOG"
+fi
 
 # regulatory domain: written where Debian wireless tooling looks, and forced by
 # the dispatcher on every pre-up (see below), because an unset domain can hide
@@ -348,11 +387,12 @@ FIRSTRUN_EOF
   # Values are substituted with a delimiter that cannot appear in an SSID.
   WIFI_COUNTRY="${XPENG_WIFI_COUNTRY:-AU}"
 TIMEZONE_WANTED="${XPENG_TIMEZONE:-Australia/Sydney}"
-python3 - "$FIRSTRUN" "$WIFI_SSID" "$WIFI_PASSWORD" "$HOSTNAME_WANTED" "$WIFI_COUNTRY" "$TIMEZONE_WANTED" <<'SUBST'
+python3 - "$FIRSTRUN" "$WIFI_SSID" "$WIFI_PASSWORD" "$HOSTNAME_WANTED" "$WIFI_COUNTRY" "$TIMEZONE_WANTED" "$WIFI_ALT_SSID" "$WIFI_ALT_PASSWORD" <<'SUBST'
 import io, sys
-path, ssid, pw, host, country, tz = sys.argv[1:7]
+path, ssid, pw, host, country, tz, altssid, altpw = sys.argv[1:9]
 text = io.open(path, encoding='utf-8').read()
 text = (text.replace('@SSIDS@', ssid).replace('@PASS@', pw)
+            .replace('@ALTSSID@', altssid).replace('@ALTPASS@', altpw)
             .replace('@HOSTNAME@', host).replace('@COUNTRY@', country)
             .replace('@TZ@', tz))
 io.open(path, 'w', encoding='utf-8', newline='\n').write(text)
