@@ -225,6 +225,13 @@ function get_common_scripts () {
   copy_script run/enable_gadget.sh /root/bin
   copy_script run/disable_gadget.sh /root/bin
   ln -sf /root/bin/mountimage /sbin/mount.teslausb
+
+  if [ "${XPENG_MODE:-false}" = "true" ]
+  then
+    copy_script run/xpeng-loop.sh /root/bin
+    copy_script run/xpeng-archive.sh /root/bin
+    copy_script run/xpeng-network-state.sh /root/bin
+  fi
 }
 
 # If only the dwc2 module is loaded at boot then the Pi will present
@@ -339,6 +346,18 @@ function create_usb_drive_backing_files () {
   then
     if [ -e /backingfiles/cam_disk.bin ] && mount_with_retry /mnt/cam
     then
+      if [ "${XPENG_MODE:-false}" = "true" ]
+      then
+        # XPENG writes two flat folders and has no event metadata, so there is
+        # no snapshot/symlink tree to build here. The .nomedia marker is what
+        # the car's own image already carries; keeping it stops Android from
+        # indexing the drive if it is ever read by a phone.
+        mkdir -p "/mnt/cam/${XPENG_NORMAL_DIR:-XP_DCIM}"
+        mkdir -p "/mnt/cam/${XPENG_EMERGENCY_DIR:-XP_EMER_DCIM}"
+        touch "/mnt/cam/${XPENG_NORMAL_DIR:-XP_DCIM}/.nomedia" 2> /dev/null || true
+        touch "/mnt/cam/${XPENG_EMERGENCY_DIR:-XP_EMER_DCIM}/.nomedia" 2> /dev/null || true
+        touch /mnt/cam/.metadata_never_index
+      else
       mkdir -p /mnt/cam/TeslaCam
       mkdir -p /mnt/cam/TeslaTrackMode
       touch /mnt/cam/.metadata_never_index
@@ -358,6 +377,7 @@ function create_usb_drive_backing_files () {
       fi
 
       umount -l /mnt/cam || setup_progress "failed to unmount /mnt/cam"
+      fi
     fi
 
     if [ -e /backingfiles/music_disk.bin ] && mount_with_retry /mnt/music

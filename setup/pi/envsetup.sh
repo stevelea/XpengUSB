@@ -132,6 +132,28 @@ function read_setup_variables {
   export LIGHTSHOW_SIZE=${LIGHTSHOW_SIZE:-0}
   export DATA_DRIVE=${DATA_DRIVE:-''}
   export USE_EXFAT=${USE_EXFAT:-false}
+
+  # XPENG mode: two lanes instead of the TeslaCam snapshot tree. Off by default
+  # so an existing Tesla installation is untouched by an upgrade.
+  export XPENG_MODE=${XPENG_MODE:-false}
+  export XPENG_NORMAL_DIR=${XPENG_NORMAL_DIR:-XP_DCIM}
+  export XPENG_EMERGENCY_DIR=${XPENG_EMERGENCY_DIR:-XP_EMER_DCIM}
+  export XPENG_EMERGENCY_SYNC=${XPENG_EMERGENCY_SYNC:-always}
+  export XPENG_NORMAL_SYNC=${XPENG_NORMAL_SYNC:-home}
+  export XPENG_HOME_SSID=${XPENG_HOME_SSID:-''}
+  export XPENG_HOME_HOST=${XPENG_HOME_HOST:-''}
+  export XPENG_HOME_PORT=${XPENG_HOME_PORT:-445}
+  export XPENG_EMERGENCY_INTERVAL=${XPENG_EMERGENCY_INTERVAL:-120}
+  export XPENG_NORMAL_INTERVAL=${XPENG_NORMAL_INTERVAL:-600}
+  export XPENG_VIEWS=${XPENG_VIEWS:-'front front_and_360'}
+  export XPENG_MIN_AGE=${XPENG_MIN_AGE:-120}
+  # leave 0: the vfat driver converts with the system timezone, so setting the
+  # Pi's timezone to the car's is the correct fix. Non-zero only if that is impossible.
+  export XPENG_MTIME_SKEW_MINUTES=${XPENG_MTIME_SKEW_MINUTES:-0}
+  export XPENG_ARCHIVE_SUBDIR=${XPENG_ARCHIVE_SUBDIR:-xpengusb}
+  export XPENG_INDEX_FILE=${XPENG_INDEX_FILE:-/mutable/xpeng/archive-index.txt}
+  export XPENG_DELETE_AFTER_UPLOAD=${XPENG_DELETE_AFTER_UPLOAD:-1}
+  export XPENG_REQUIRE_IDLE_FOR_DELETE=${XPENG_REQUIRE_IDLE_FOR_DELETE:-0}
 }
 
 read_setup_variables

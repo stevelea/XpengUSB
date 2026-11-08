@@ -50,6 +50,15 @@ export MUSIC_MOUNT=/mnt/music
 # read the setup variables and define other environment variables and functions
 source /root/bin/envsetup.sh
 
+# XPENG mode replaces the TeslaCam snapshot/archive loop with the two-lane
+# supervisor. It is a separate program so this file stays the Tesla one it has
+# always been; see run/xpeng-loop.sh and doc/XpengPort.md.
+if [ "${XPENG_MODE:-false}" = "true" ]
+then
+  log "XPENG_MODE is on - handing over to xpeng-loop.sh"
+  exec /root/bin/xpeng-loop.sh
+fi
+
 # led triggers may have been built as modules, so try
 # to load them
 if ! grep -q timer "$STATUSLED/trigger"

@@ -18,4 +18,13 @@ shellcheck --exclude=SC1091 \
            ./run/remountfs_rw \
            ./run/send-push-message \
            ./run/temperature_monitor \
-           ./run/waitforidle
+           ./run/waitforidle \
+           ./run/xpeng-loop.sh \
+           ./run/xpeng-archive.sh \
+           ./run/xpeng-network-state.sh \
+           ./run/xpeng-lan-pin.sh \
+           ./tests/xpeng-test.sh \
+           ./tools/flash-sd-mac.sh \
+           ./tools/xpeng-prepare-boot.sh \
+           ./tools/xpeng-drive-inventory.sh \
+           ./tools/xpeng-gadget-test.sh

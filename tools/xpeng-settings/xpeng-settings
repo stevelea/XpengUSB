@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""xpeng-settings - a small web form for the XPENG archiver's settings.
+
+Deliberately tiny and dependency-free (stdlib only): it edits a whitelist of keys
+in /root/teslausb_setup_variables.conf and nothing else. No shell, no eval, no
+template engine - every value is validated against its own type before it is
+written, so a request cannot inject a command or another variable.
+
+Run:  XPENG_SETTINGS_CONF=/root/teslausb_setup_variables.conf python3 xpeng-settings
+Auth: HTTP Basic; credentials in /etc/xpeng-settings.env (mode 600).
+"""
+import base64
+import os
+import re
+import secrets
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs
+
+CONF = os.environ.get("XPENG_SETTINGS_CONF", "/root/teslausb_setup_variables.conf")
+ENV = os.environ.get("XPENG_SETTINGS_ENV", "/etc/xpeng-settings.env")
+PORT = int(os.environ.get("XPENG_SETTINGS_PORT", "8081"))
+BIND = os.environ.get("XPENG_SETTINGS_BIND", "0.0.0.0")
+
+# key -> (kind, label, help).  'choice' and 'int' are validated strictly.
+FIELDS = [
+    ("XPENG_EMERGENCY_SYNC", "choice", "Emergency lane: when to sync",
+     "always = any internet (recommended), home = only on home Wi-Fi, off = never"),
+    ("XPENG_NORMAL_SYNC", "choice", "Normal lane: when to sync",
+     "home = only on home Wi-Fi (recommended), always, off"),
+    ("XPENG_RETENTION_DAYS", "int", "Keep the NAS archive for (days)",
+     "0 = keep forever (recommended - this is the viewer's library). Non-zero deletes "
+     "history from the NAS, not just from the car."),
+    ("XPENG_DRIVE_RETENTION_DAYS", "int", "Keep clips on the car's drive for (days)",
+     "14 = a two-week window. A clip is deleted only once the archive already holds "
+     "it and it is older than this. 0 = delete as soon as it is verified."),
+    ("XPENG_DELETE_AFTER_UPLOAD", "choice", "Allow deleting from the drive at all",
+     "1 = yes (the drive is the car's, so this is what keeps it clear); 0 = never delete"),
+    ("XPENG_VIEWS", "choice", "Which camera views to archive",
+     "'front' halves the volume; both views costs roughly twice the bandwidth"),
+    ("XPENG_MIN_AGE", "int", "Settle window (seconds)",
+     "A clip is only considered once it has been untouched this long"),
+    ("XPENG_EMERGENCY_INTERVAL", "int", "Emergency lane interval (seconds)", ""),
+    ("XPENG_NORMAL_INTERVAL", "int", "Normal lane interval (seconds)", ""),
+    ("XPENG_EXTRA_DIRS", "text", "Extra folders treated as emergency",
+     "e.g. XP_XGUARD_DCIM - for footage in a folder this build does not know about"),
+]
+
+CHOICES = {
+    "XPENG_EMERGENCY_SYNC": ["always", "home", "off"],
+    "XPENG_NORMAL_SYNC": ["home", "always", "off"],
+    "XPENG_DELETE_AFTER_UPLOAD": ["1", "0"],
+    "XPENG_VIEWS": ["front", "front front_and_360"],
+}
+
+# Wat the raw values actually mean, so the form is readable rather than a query.
+CHOICE_LABELS = {
+    ("XPENG_VIEWS", "front"): "front only - one file per minute instead of two: half the volume and half the upload time",
+    ("XPENG_VIEWS", "front front_and_360"): "all views - front + the 4-camera 360 view: 2 files/minute, ~7.8 GB/day",
+    ("XPENG_EMERGENCY_SYNC", "always"): "always - on any network, including mobile data via Tailscale",
+    ("XPENG_EMERGENCY_SYNC", "home"): "home only",
+    ("XPENG_EMERGENCY_SYNC", "off"): "off - never sync emergency clips",
+    ("XPENG_NORMAL_SYNC", "home"): "home only - recommended, the lane is huge",
+    ("XPENG_NORMAL_SYNC", "always"): "always - uploads over mobile data too",
+    ("XPENG_NORMAL_SYNC", "off"): "off - never sync normal driving",
+    ("XPENG_DELETE_AFTER_UPLOAD", "1"): "yes - delete from the drive once archived and past the window",
+    ("XPENG_DELETE_AFTER_UPLOAD", "0"): "no - never delete from the drive",
+}
+LIMITS = {"XPENG_RETENTION_DAYS": (0, 3650), "XPENG_DRIVE_RETENTION_DAYS": (0, 3650),
+          "XPENG_MIN_AGE": (0, 86400),
+          "XPENG_EMERGENCY_INTERVAL": (30, 86400), "XPENG_NORMAL_INTERVAL": (30, 86400)}
+
+
+def read_conf():
+    values = {}
+    try:
+        with open(CONF, encoding="utf-8") as fh:
+            for line in fh:
+                m = re.match(r'\s*export\s+([A-Z0-9_]+)=(.*)$', line)
+                if m:
+                    v = m.group(2).strip()
+                    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                        v = v[1:-1]
+                    values[m.group(1)] = v
+    except FileNotFoundError:
+        pass
+    return values
+
+
+def validate(key, kind, raw):
+    raw = (raw or "").strip()
+    if kind == "choice":
+        return raw if raw in CHOICES[key] else None
+    if kind == "int":
+        if not re.fullmatch(r"\d{1,6}", raw):
+            return None
+        lo, hi = LIMITS.get(key, (0, 999999))
+        n = int(raw)
+        return str(n) if lo <= n <= hi else None
+    # text: letters, digits, spaces, underscore, dot, dash only
+    if re.fullmatch(r"[A-Za-z0-9_.\- ]*", raw):
+        return raw
+    return None
+
+
+def write_conf(updates):
+    lines = []
+    try:
+        with open(CONF, encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except FileNotFoundError:
+        lines = ["# XPENGUSB configuration\n"]
+    seen = set()
+    out = []
+    for line in lines:
+        m = re.match(r'\s*export\s+([A-Z0-9_]+)=', line)
+        if m and m.group(1) in updates:
+            key = m.group(1)
+            out.append('export %s="%s"\n' % (key, updates[key]))
+            seen.add(key)
+        else:
+            out.append(line)
+    for key, val in updates.items():
+        if key not in seen:
+            out.append('export %s="%s"\n' % (key, val))
+    tmp = CONF + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.writelines(out)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, CONF)
+
+
+def credentials():
+    user, password = "xpeng", "changeme"
+    try:
+        with open(ENV, encoding="utf-8") as fh:
+            for line in fh:
+                if "=" in line:
+                    k, v = line.rstrip("\n").split("=", 1)
+                    if k == "XPENG_SETTINGS_USER":
+                        user = v
+                    elif k == "XPENG_SETTINGS_PASS":
+                        password = v
+    except FileNotFoundError:
+        pass
+    return user, password
+
+
+def page(values, message=""):
+    rows = []
+    for key, kind, label, help_ in FIELDS:
+        cur = values.get(key, "")
+        if kind == "choice":
+            opts = "".join(
+                '<option value="%s"%s>%s</option>'
+                % (c, " selected" if c == cur else "", CHOICE_LABELS.get((key, c), c))
+                for c in CHOICES[key])
+            control = '<select name="%s">%s</select>' % (key, opts)
+        else:
+            control = '<input name="%s" value="%s" size="28">' % (key, cur)
+        rows.append(
+            '<tr><th>%s<div class="k">%s</div></th><td>%s<div class="h">%s</div></td></tr>'
+            % (label, key, control, help_))
+    return """<!doctype html><meta charset="utf-8"><title>XPENG archiver settings</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+ :root{color-scheme:dark}
+ body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:20px;background:#111;color:#ddd;max-width:900px}
+ h1{font-size:19px;margin:0 0 2px} p.sub{margin:0 0 18px;color:#888;font-size:13px}
+ table{width:100%%;border-collapse:collapse} th,td{text-align:left;padding:10px 8px;border-top:1px solid #262626;vertical-align:top}
+ th{width:44%%;font-weight:500} .k{color:#666;font:12px ui-monospace,monospace}
+ .h{color:#888;font-size:12px;margin-top:4px}
+ input,select{background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:6px;padding:6px 8px;font:inherit}
+ button{background:#2b6cb0;color:#fff;border:0;border-radius:6px;padding:9px 16px;font:inherit;cursor:pointer;margin-top:16px}
+ .msg{background:#243b2b;border:1px solid #2f5a3c;color:#cfc;padding:8px 12px;border-radius:6px;margin-bottom:14px}
+</style>
+<h1>XPENG archiver</h1>
+<p class="sub">Settings for the car Pi. Saving rewrites the config file; services pick it up on their next run.</p>
+%s
+<form method="post"><table>%s</table><button type="submit">Save</button></form>
+""" % ('<div class="msg">%s</div>' % message if message else "", "".join(rows))
+
+
+class Handler(BaseHTTPRequestHandler):
+    user, password = credentials()
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+    def authorised(self):
+        hdr = self.headers.get("Authorization", "")
+        if not hdr.startswith("Basic "):
+            return False
+        try:
+            u, p = base64.b64decode(hdr[6:]).decode("utf-8").split(":", 1)
+        except Exception:
+            return False
+        # compare in constant time
+        return (secrets.compare_digest(u, self.user)
+                and secrets.compare_digest(p, self.password))
+
+    def need_auth(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="XPENG archiver"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):
+        if not self.authorised():
+            return self.need_auth()
+        body = page(read_conf()).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        if not self.authorised():
+            return self.need_auth()
+        length = int(self.headers.get("Content-Length", "0"))
+        form = parse_qs(self.rfile.read(length).decode("utf-8"))
+        updates, rejected = {}, []
+        for key, kind, _, _ in FIELDS:
+            raw = (form.get(key) or [""])[0]
+            val = validate(key, kind, raw)
+            if val is None:
+                rejected.append(key)
+            else:
+                updates[key] = val
+        if rejected:
+            body = page(read_conf(), "Rejected: " + ", ".join(rejected)).encode()
+            code = 400
+        else:
+            write_conf(updates)
+            body = page(read_conf(), "Saved.").encode()
+            code = 200
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+if __name__ == "__main__":
+    if os.environ.get("XPENG_SETTINGS_SELFTEST") == "1":
+        print("conf:", CONF, "fields:", len(FIELDS))
+        sys.exit(0)
+    print("xpeng-settings on %s:%d, conf %s" % (BIND, PORT, CONF), file=sys.stderr)
+    HTTPServer((BIND, PORT), Handler).serve_forever()
