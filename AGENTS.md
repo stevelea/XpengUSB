@@ -9,7 +9,7 @@ rclone), optionally over Tailscale, and deletes them only after a verified uploa
 the archive lands on the NAS and verifies, and the clips appear in Frigate (3 live-view
 cameras) and in a web viewer on the Frigate host.
 
-**Branch `xpeng` holds the first implementation:** `run/xpeng-{loop,archive,network-state}.sh`
+**Branch `main` holds the first implementation:** `run/xpeng-{loop,archive,network-state}.sh`
 behind `XPENG_MODE=true`, with `tests/xpeng-test.sh` (40 assertions, runs on macOS/Linux, no
 board needed). The Tesla path is untouched when `XPENG_MODE` is off. Read
 [`doc/XpengPort.md`](doc/XpengPort.md) first — it has the measured car layout, the design and
@@ -33,7 +33,7 @@ the hardware verdicts.
 - `run/enable_gadget.sh`, `run/disable_gadget.sh` — USB gadget from `/backingfiles/*.bin`.
 - `run/waitforidle` — "is the car writing?" via the gadget's `/proc/<pid>/io`.
 - `setup/pi/setup-teslausb` — the installer; honours `REPO`/`BRANCH`, so this fork installs
-  as `REPO=stevelea BRANCH=xpeng`. Creates `XP_DCIM`/`XP_EMER_DCIM` when `XPENG_MODE=true`.
+  as `REPO=stevelea BRANCH=main`. Creates `XP_DCIM`/`XP_EMER_DCIM` when `XPENG_MODE=true`.
 - `setup/pi/envsetup.sh` — reads `/root/teslausb_setup_variables.conf`; all `XPENG_*`
   settings live here, defaults inert.
 - `teslausb-www/` — Tesla-specific web UI (event folders); leave it off for XPENG.

@@ -1,6 +1,6 @@
 # Porting teslausb to XPENG — investigation and design
 
-Status: **investigation done, first implementation on branch `xpeng`** (§12). This
+Status: **investigation done, first implementation on branch `main`** (§12). This
 document records what was verified, what maps cleanly onto teslausb, what does not, the
 design that follows, and what has been built against it.
 Date: 2026-11-08.
@@ -24,7 +24,7 @@ The fork already exists: `stevelea/teslausb`, branch `main-dev`, HEAD `fb4ed15`.
 
 Everything below is designed so it still installs the stock way — `setup-teslausb`
 already honours `REPO` and `BRANCH` (`setup/pi/setup-teslausb:80`), so an Xpeng build
-is `REPO=stevelea BRANCH=xpeng` and no changes to the installer.
+is `REPO=stevelea BRANCH=main` and no changes to the installer.
 
 ---
 
@@ -861,7 +861,7 @@ directories and against the real archive, which is the useful half.
 
 ### Implementation status (2026-11-08)
 
-On branch `xpeng`:
+On branch `main`:
 
 | File | State |
 |---|---|

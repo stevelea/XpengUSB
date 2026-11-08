@@ -37,7 +37,7 @@
 # Hostname (optional): XPENG_HOSTNAME, default piXpeng.
 #
 # Wi-Fi (optional): XPENG_WIFI_SSID may be a space-separated list, e.g.
-#   XPENG_WIFI_SSID="thehome24 thehome"
+#   XPENG_WIFI_SSID="my-home-wifi my-other-wifi"
 # One NetworkManager keyfile is written per SSID with descending autoconnect
 # priority, so whichever the radio can actually see wins. A dual-band mesh SSID
 # can be unusable for a 2.4 GHz-only radio (band steering, or the 2.4 GHz BSS not
