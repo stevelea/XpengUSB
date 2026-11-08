@@ -6,11 +6,11 @@ drive, archives `XP_DCIM` / `XP_EMER_DCIM` clips to a NAS (or Google Drive via
 rclone), optionally over Tailscale, and deletes them only after a verified upload.
 
 **Verified on hardware (2026-11-08):** the car records normal and emergency clips to the Pi,
-the archive lands on the NAS and verifies, and the clips appear in Frigate (3 live-view
-cameras) and in a web viewer on the Frigate host.
+the archive lands on the NAS and verifies, and the clips are browsable in a dashcam viewer.
+Frigate live view is optional and works. Scheduling is **not** automated yet.
 
 **Branch `main` holds the first implementation:** `run/xpeng-{loop,archive,network-state}.sh`
-behind `XPENG_MODE=true`, with `tests/xpeng-test.sh` (40 assertions, runs on macOS/Linux, no
+behind `XPENG_MODE=true`, with `tests/xpeng-test.sh` (45 assertions, runs on macOS/Linux, no
 board needed). The Tesla path is untouched when `XPENG_MODE` is off. Read
 [`doc/XpengPort.md`](doc/XpengPort.md) first — it has the measured car layout, the design and
 the hardware verdicts.
@@ -45,9 +45,9 @@ the hardware verdicts.
   lists its folders and newest clips. Answers "did the car write anything, and where?".
 - `tools/xpeng-settings/` — the Pi's settings page (stdlib Python, port 8081). `install.sh`
   also purges nginx from the Pi.
-- The **archive viewer is not in this repo's Pi image**: it is the `xpeng-viewer` container
-  on the Frigate host (`192.168.1.202:8090`), reading the NAS over NFS. See
-  `doc/XpengPort.md` §7.9.
+- **No viewer is included.** The reference deployment points an existing XPENG dashcam
+  viewer (indexing `XP_DCIM` / `XP_EMER_DCIM`) at the archive; the archiver's default
+  `XPENG_ARCHIVE_SUBDIR` targets that tree. See `doc/XpengPort.md` §7.9.
 
 ## Commands
 
